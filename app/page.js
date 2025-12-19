@@ -15,7 +15,8 @@ export default function MiningCalculator() {
   const [selectedTier, setSelectedTier] = useState(2);
   const [currentBtcPrice, setCurrentBtcPrice] = useState(null);
   const [historicalBtcPrice, setHistoricalBtcPrice] = useState(null);
-  const [hashpriceUsd, setHashpriceUsd] = useState(0);
+  // Hashprice is not sourced from CoinGecko; use a reasonable default but persist user edits locally.
+  const [hashpriceUsd, setHashpriceUsd] = useState(0.063);
   const [electricityCostKwh, setElectricityCostKwh] = useState(0.05);
   const [wattsPerTh, setWattsPerTh] = useState(29.5);
   const [contractMonths, setContractMonths] = useState(24);
@@ -23,6 +24,27 @@ export default function MiningCalculator() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [priceError, setPriceError] = useState(null);
+
+  // Persist hashprice input so refreshes don't "reset" it.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('hashpriceUsd');
+      if (saved != null && saved !== '') {
+        const n = Number(saved);
+        if (Number.isFinite(n) && n >= 0) setHashpriceUsd(n);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hashpriceUsd', String(hashpriceUsd));
+    } catch {
+      // ignore
+    }
+  }, [hashpriceUsd]);
 
   // Calculate historical growth multiplier
   const historicalMultiplier = useMemo(() => {
