@@ -25,26 +25,7 @@ export default function MiningCalculator() {
   const [isLoading, setIsLoading] = useState(true);
   const [priceError, setPriceError] = useState(null);
 
-  // Persist hashprice input so refreshes don't "reset" it.
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('hashpriceUsd');
-      if (saved != null && saved !== '') {
-        const n = Number(saved);
-        if (Number.isFinite(n) && n >= 0) setHashpriceUsd(n);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('hashpriceUsd', String(hashpriceUsd));
-    } catch {
-      // ignore
-    }
-  }, [hashpriceUsd]);
+  // Intentionally no persistence: a browser refresh should reset inputs to defaults.
 
   // Calculate historical growth multiplier
   const historicalMultiplier = useMemo(() => {

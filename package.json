@@ -2,6 +2,10 @@
   "name": "mining-calculator",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
@@ -9,12 +13,12 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "next": "14.0.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "next": "^14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "eslint": "^8.55.0",
-    "eslint-config-next": "14.0.4"
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.18"
   }
 }
