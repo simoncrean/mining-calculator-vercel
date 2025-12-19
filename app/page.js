@@ -455,6 +455,13 @@ export default function MiningCalculator() {
             <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
               Hashprice ($/TH/day)
             </label>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>
+              Reference: hashpower marketplace pricing (e.g.{' '}
+              <a href="https://www.nicehash.com/" target="_blank" rel="noreferrer" style={{ color: '#94a3b8' }}>
+                NiceHash
+              </a>
+              ). Default is a placeholder—enter your own.
+            </div>
             <input
               type="number"
               step="0.001"
@@ -477,6 +484,9 @@ export default function MiningCalculator() {
             <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
               Electricity Cost ($/kWh)
             </label>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', lineHeight: 1.4 }}>
+              Reference: your utility bill / contracted power rate. Default is a placeholder.
+            </div>
             <input
               type="number"
               step="0.01"
