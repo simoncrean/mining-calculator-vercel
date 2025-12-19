@@ -47,7 +47,7 @@ npm install
 # Run development server
 npm run dev
 
-# Open http://localhost:3000
+# Open http://localhost:3001
 ```
 
 ### CoinGecko API Key (Fix 401 on Historical Prices)
@@ -83,6 +83,11 @@ Uses CoinGecko free API for BTC prices:
 - Historical price: `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range`
 
 Prices refresh every 12 hours (twice daily).
+
+## Market References (Defaults)
+
+- **Hashprice ($/TH/day)**: this is **not** fetched from CoinGecko; it’s a user input. A public market reference is the hashpower marketplace at [NiceHash](https://www.nicehash.com/).
+- **Electricity cost ($/kWh)**: this is a user input. Use your utility bill / contracted energy rate for your location.
 
 ## License
 
