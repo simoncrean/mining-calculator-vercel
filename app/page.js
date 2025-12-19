@@ -13,9 +13,9 @@ export default function MiningCalculator() {
 
   // State
   const [selectedTier, setSelectedTier] = useState(2);
-  const [currentBtcPrice, setCurrentBtcPrice] = useState(97000);
-  const [historicalBtcPrice, setHistoricalBtcPrice] = useState(16800);
-  const [hashpriceUsd, setHashpriceUsd] = useState(0.063);
+  const [currentBtcPrice, setCurrentBtcPrice] = useState(null);
+  const [historicalBtcPrice, setHistoricalBtcPrice] = useState(null);
+  const [hashpriceUsd, setHashpriceUsd] = useState(0);
   const [electricityCostKwh, setElectricityCostKwh] = useState(0.05);
   const [wattsPerTh, setWattsPerTh] = useState(29.5);
   const [contractMonths, setContractMonths] = useState(24);
@@ -26,10 +26,10 @@ export default function MiningCalculator() {
 
   // Calculate historical growth multiplier
   const historicalMultiplier = useMemo(() => {
-    if (historicalBtcPrice > 0) {
+    if (historicalBtcPrice && historicalBtcPrice > 0 && currentBtcPrice && currentBtcPrice > 0) {
       return currentBtcPrice / historicalBtcPrice;
     }
-    return 5.7; // fallback
+    return null;
   }, [currentBtcPrice, historicalBtcPrice]);
 
   // Fetch BTC prices on mount and set up refresh
@@ -39,37 +39,29 @@ export default function MiningCalculator() {
       setPriceError(null);
       
       try {
-        // Get current price
-        const currentResponse = await fetch(
-          'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd'
-        );
-        const currentData = await currentResponse.json();
-        const currentPrice = currentData.bitcoin?.usd;
+        const res = await fetch('/api/btc-prices');
+        const data = await res.json();
 
-        // Calculate date 2 years ago
-        const now = new Date();
-        const twoYearsAgo = new Date(now);
-        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-        const historicalTimestamp = Math.floor(twoYearsAgo.getTime() / 1000);
-
-        // Get historical price (2 years ago)
-        const historicalResponse = await fetch(
-          `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from=${historicalTimestamp}&to=${historicalTimestamp + 86400}`
-        );
-        const historicalData = await historicalResponse.json();
-        const historicalPrice = historicalData.prices?.[0]?.[1];
-
-        if (currentPrice) {
-          setCurrentBtcPrice(Math.round(currentPrice));
+        if (!res.ok) {
+          throw new Error(data?.error || `Price API error: ${res.status} ${res.statusText}`);
         }
-        if (historicalPrice) {
-          setHistoricalBtcPrice(Math.round(historicalPrice));
+
+        if (typeof data?.currentPriceUsd !== 'number' || data.currentPriceUsd <= 0) {
+          throw new Error('Invalid current price from price API');
         }
+        if (typeof data?.historicalPriceUsd !== 'number' || data.historicalPriceUsd <= 0) {
+          throw new Error('Invalid historical price from price API');
+        }
+
+        setCurrentBtcPrice(data.currentPriceUsd);
+        setHistoricalBtcPrice(data.historicalPriceUsd);
         
         setLastUpdated(new Date());
+        setPriceError(null);
       } catch (error) {
         console.error('Error fetching prices:', error);
-        setPriceError('Using cached prices - API rate limited');
+        setPriceError(`API Error: ${error.message}`);
+        // Don't set fallback values - let the UI show that data is unavailable
       } finally {
         setIsLoading(false);
       }
@@ -101,11 +93,24 @@ export default function MiningCalculator() {
   const growthScenarios = useMemo(() => {
     const scaled = {};
     Object.entries(baseMultipliers).forEach(([key, val]) => {
+      const base24m = val.base24m;
+
+      // If we don't have valid live data yet (e.g. historicalMultiplier is null),
+      // mark the scenario unavailable rather than coercing to 0 / NaN.
+      if (!Number.isFinite(base24m) || base24m <= 0 || contractMonths <= 0) {
+        scaled[key] = {
+          ...val,
+          finalMultiplier: null,
+          label: `${val.label} (unavailable)`,
+        };
+        return;
+      }
+
       // Scale: adjusted = base ^ (contractMonths / 24)
-      const scaledMultiplier = Math.pow(val.base24m, contractMonths / 24);
+      const scaledMultiplier = Math.pow(base24m, contractMonths / 24);
       const percentChange = ((scaledMultiplier - 1) * 100).toFixed(0);
       const sign = scaledMultiplier >= 1 ? '+' : '';
-      
+
       scaled[key] = {
         ...val,
         finalMultiplier: scaledMultiplier,
@@ -134,6 +139,16 @@ export default function MiningCalculator() {
     const projections = [];
     let cumulativeBtc = 0;
     let cumulativeElecCost = 0;
+
+    if (!currentBtcPrice || !Number.isFinite(currentBtcPrice) || currentBtcPrice <= 0) {
+      return projections;
+    }
+    if (!scenario || !Number.isFinite(scenario.finalMultiplier) || scenario.finalMultiplier <= 0) {
+      return projections;
+    }
+    if (!contractMonths || contractMonths <= 0) {
+      return projections;
+    }
 
     const monthlyBtcGrowthRate = Math.pow(scenario.finalMultiplier, 1 / contractMonths) - 1;
 
@@ -183,9 +198,26 @@ export default function MiningCalculator() {
   const finalProjection = monthlyProjections[monthlyProjections.length - 1];
 
   // Format helpers
-  const formatUsd = (val) => val.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  const formatBtc = (val) => val.toFixed(8);
-  const formatPercent = (val) => `${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+  const formatUsd = (val) => {
+    const n = typeof val === 'number' ? val : Number(val);
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  };
+  const formatBtc = (val) => {
+    const n = typeof val === 'number' ? val : Number(val);
+    if (!Number.isFinite(n)) return '—';
+    return n.toFixed(8);
+  };
+  const formatPercent = (val) => {
+    const n = typeof val === 'number' ? val : Number(val);
+    if (!Number.isFinite(n)) return '—';
+    return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+  };
 
   // Format date for 2 years ago display
   const twoYearsAgoDate = useMemo(() => {
@@ -241,14 +273,18 @@ export default function MiningCalculator() {
           }} />
           <span style={{ fontSize: '12px', color: '#94a3b8' }}>
             {isLoading ? 'Fetching live prices...' : (
-              <>
-                Live: <span style={{ color: '#f7931a', fontWeight: '600' }}>{formatUsd(currentBtcPrice)}</span>
-                {lastUpdated && (
-                  <span style={{ marginLeft: '8px', opacity: 0.6 }}>
-                    Updated {lastUpdated.toLocaleTimeString()}
-                  </span>
-                )}
-              </>
+              currentBtcPrice ? (
+                <>
+                  Live: <span style={{ color: '#f7931a', fontWeight: '600' }}>{formatUsd(currentBtcPrice)}</span>
+                  {lastUpdated && (
+                    <span style={{ marginLeft: '8px', opacity: 0.6 }}>
+                      Updated {lastUpdated.toLocaleTimeString()}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span style={{ color: '#ef4444' }}>Price data unavailable</span>
+              )
             )}
           </span>
         </div>
@@ -258,50 +294,65 @@ export default function MiningCalculator() {
       </div>
 
       {/* 2-Year Price Comparison Banner */}
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto 20px',
-        padding: '16px 20px',
-        background: 'linear-gradient(90deg, rgba(247, 147, 26, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)',
-        borderRadius: '12px',
-        border: '1px solid rgba(247, 147, 26, 0.2)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px',
-      }}>
-        <div style={{ textAlign: 'center', flex: '1', minWidth: '140px' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{twoYearsAgoDate}</div>
-          <div style={{ fontSize: '22px', fontWeight: '700', color: '#94a3b8' }}>
-            {formatUsd(historicalBtcPrice)}
+      {currentBtcPrice && historicalBtcPrice && historicalMultiplier ? (
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto 20px',
+          padding: '16px 20px',
+          background: 'linear-gradient(90deg, rgba(247, 147, 26, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)',
+          borderRadius: '12px',
+          border: '1px solid rgba(247, 147, 26, 0.2)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}>
+          <div style={{ textAlign: 'center', flex: '1', minWidth: '140px' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{twoYearsAgoDate}</div>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#94a3b8' }}>
+              {formatUsd(historicalBtcPrice)}
+            </div>
+          </div>
+          
+          <div style={{ textAlign: 'center', flex: '1', minWidth: '120px' }}>
+            <div style={{
+              fontSize: '24px',
+              fontWeight: '800',
+              color: '#10b981',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}>
+              <span>→</span>
+              <span>{historicalMultiplier.toFixed(2)}x</span>
+              <span>→</span>
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>2-Year Growth</div>
+          </div>
+          
+          <div style={{ textAlign: 'center', flex: '1', minWidth: '140px' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{todayDate}</div>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: '#f7931a' }}>
+              {formatUsd(currentBtcPrice)}
+            </div>
           </div>
         </div>
-        
-        <div style={{ textAlign: 'center', flex: '1', minWidth: '120px' }}>
-          <div style={{
-            fontSize: '24px',
-            fontWeight: '800',
-            color: '#10b981',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-          }}>
-            <span>→</span>
-            <span>{historicalMultiplier.toFixed(2)}x</span>
-            <span>→</span>
-          </div>
-          <div style={{ fontSize: '11px', color: '#64748b' }}>2-Year Growth</div>
+      ) : (
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto 20px',
+          padding: '16px 20px',
+          background: 'rgba(239, 68, 68, 0.1)',
+          borderRadius: '12px',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          textAlign: 'center',
+          color: '#ef4444',
+        }}>
+          Price data unavailable. Please wait for API to load or refresh the page.
         </div>
-        
-        <div style={{ textAlign: 'center', flex: '1', minWidth: '140px' }}>
-          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{todayDate}</div>
-          <div style={{ fontSize: '22px', fontWeight: '700', color: '#f7931a' }}>
-            {formatUsd(currentBtcPrice)}
-          </div>
-        </div>
-      </div>
+      )}
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
         
@@ -357,8 +408,13 @@ export default function MiningCalculator() {
             </label>
             <input
               type="number"
-              value={currentBtcPrice}
-              onChange={(e) => setCurrentBtcPrice(Number(e.target.value))}
+              value={currentBtcPrice ?? ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') return setCurrentBtcPrice(null);
+                const n = Number(raw);
+                setCurrentBtcPrice(Number.isFinite(n) ? n : null);
+              }}
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -481,7 +537,9 @@ export default function MiningCalculator() {
                   )}
                 </span>
                 <span style={{ fontSize: '12px', opacity: 0.7, textAlign: 'right' }}>
-                  → {formatUsd(currentBtcPrice * val.finalMultiplier)}
+                  → {(currentBtcPrice && Number.isFinite(val.finalMultiplier))
+                    ? formatUsd(currentBtcPrice * val.finalMultiplier)
+                    : '—'}
                 </span>
               </button>
             ))}

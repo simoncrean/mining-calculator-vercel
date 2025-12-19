@@ -50,6 +50,23 @@ npm run dev
 # Open http://localhost:3000
 ```
 
+### CoinGecko API Key (Fix 401 on Historical Prices)
+
+CoinGecko may return **401 Unauthorized** for historical endpoints unless you provide an API key.
+
+Set an environment variable before running the dev server:
+
+```bash
+export COINGECKO_API_KEY="YOUR_COINGECKO_KEY"
+npm run dev
+```
+
+Optional (if your plan requires a different base URL):
+
+```bash
+export COINGECKO_BASE_URL="https://pro-api.coingecko.com/api/v3"
+```
+
 ## Configuration
 
 Edit `app/page.js` to customize:
